@@ -33,7 +33,6 @@ export default function WeighbridgeKiosk() {
   const [activeTab, setActiveTab] = useState<"BOOKING" | "TIKET" | "ORDER">("BOOKING");
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [countdown, setCountdown] = useState(5);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 1. Keep scanner input auto-focused for USB 2D hardware barcode scanner
@@ -41,26 +40,6 @@ export default function WeighbridgeKiosk() {
     if (screenState === "STANDBY" && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [screenState]);
-
-  // 3. Auto-reset timer when in SUCCESS state (5 seconds)
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (screenState === "SUCCESS") {
-      setCountdown(5);
-      timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            setScreenState("STANDBY");
-            setBarcodeInput("");
-            return 5;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(timer);
   }, [screenState]);
 
   // Handler Submit / Scan Barcode
@@ -77,6 +56,7 @@ export default function WeighbridgeKiosk() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           barcodeInput: cleanInput,
+          searchType: activeTab === "BOOKING" ? "Kode Booking" : activeTab === "TIKET" ? "No Tiket" : "Order ID",
           actualWeight: telemetry.weight,
           isStable: telemetry.isStable,
           operatorUsername: "operator_timbang_01",
@@ -234,7 +214,7 @@ export default function WeighbridgeKiosk() {
                 onClick={handleReset}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-8 py-3.5 rounded-xl shadow-lg transition-all flex items-center gap-2 text-base"
               >
-                Scan Kendaraan Berikutnya ({countdown}s)
+                Scan Kendaraan Berikutnya
               </button>
             </div>
           </div>
