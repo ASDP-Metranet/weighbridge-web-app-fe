@@ -676,9 +676,12 @@ export default function PosTimbang() {
                 </div>
               )}
 
-              {/* STATUS 1: SUKSES (PERSIS GAMBAR #2) */}
+              {/* ===================================================== */}
+              {/* STATUS 1: SUKSES (PERSIS GAMBAR #2)                   */}
+              {/* ===================================================== */}
               {!loading && screenState === "SUCCESS" && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", animation: "fadeIn 0.3s" }}>
+                  {/* Outline Green Checkmark Icon (Persis Gambar #2) */}
                   <div style={{
                     width: "90px",
                     height: "90px",
@@ -696,6 +699,7 @@ export default function PosTimbang() {
                     </svg>
                   </div>
 
+                  {/* Title Header */}
                   <h2 style={{
                     fontSize: "26px",
                     fontWeight: 800,
@@ -707,6 +711,7 @@ export default function PosTimbang() {
                     BERHASIL INPUT<br />BERAT KENDARAAN
                   </h2>
 
+                  {/* White Box with Border: Nilai Bobot (Persis Gambar #2) */}
                   <div style={{
                     backgroundColor: "#ffffff",
                     border: "1.5px solid #cbd5e1",
@@ -724,38 +729,12 @@ export default function PosTimbang() {
                       {displayWeight} kg
                     </span>
                   </div>
-
-                  {validationResult && (
-                    <div style={{ marginTop: "16px", fontSize: "13px", color: "#64748b" }}>
-                      Plat: <strong style={{ color: "#0f172a" }}>{validationResult.licensePlate}</strong> • Golongan: <strong style={{ color: "#0f172a" }}>{validationResult.vehicleClass}</strong>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      setScreenState("STANDBY");
-                      setBarcodeInput("");
-                      setValidationResult(null);
-                      if (inputRef.current) inputRef.current.focus();
-                    }}
-                    style={{
-                      marginTop: "24px",
-                      padding: "8px 20px",
-                      backgroundColor: "#22c55e",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    Scan Tiket Berikutnya (Spasi / Esc)
-                  </button>
                 </div>
               )}
 
-              {/* STATUS 2: KODE BOOKING TIDAK VALID */}
+              {/* ===================================================== */}
+              {/* STATUS 2: KODE BOOKING TIDAK VALID                    */}
+              {/* ===================================================== */}
               {!loading && screenState === "INVALID" && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", animation: "fadeIn 0.3s" }}>
                   <div style={{
@@ -780,7 +759,7 @@ export default function PosTimbang() {
                     fontWeight: 800,
                     color: "#0f172a",
                     lineHeight: 1.25,
-                    margin: "0 0 20px 0",
+                    margin: "0",
                     letterSpacing: "-0.5px"
                   }}>
                     {validationResult?.message ? (
@@ -798,31 +777,12 @@ export default function PosTimbang() {
                       </>
                     )}
                   </h2>
-
-                  <button
-                    onClick={() => {
-                      setScreenState("STANDBY");
-                      setBarcodeInput("");
-                      setValidationResult(null);
-                      if (inputRef.current) inputRef.current.focus();
-                    }}
-                    style={{
-                      padding: "8px 20px",
-                      backgroundColor: "#ef4444",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    Scan Ulang (Spasi / Esc)
-                  </button>
                 </div>
               )}
 
-              {/* STATUS 3: TIKET SUDAH CHECK IN */}
+              {/* ===================================================== */}
+              {/* STATUS 3: TIKET SUDAH CHECK IN (KUNING / WARNING)    */}
+              {/* ===================================================== */}
               {!loading && screenState === "ALREADY_CHECKIN" && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", animation: "fadeIn 0.3s" }}>
                   <div style={{
@@ -847,36 +807,17 @@ export default function PosTimbang() {
                     fontWeight: 800,
                     color: "#0f172a",
                     lineHeight: 1.25,
-                    margin: "0 0 20px 0",
+                    margin: "0",
                     letterSpacing: "-0.5px"
                   }}>
                     TIKET SUDAH<br />CHECK IN
                   </h2>
-
-                  <button
-                    onClick={() => {
-                      setScreenState("STANDBY");
-                      setBarcodeInput("");
-                      setValidationResult(null);
-                      if (inputRef.current) inputRef.current.focus();
-                    }}
-                    style={{
-                      padding: "8px 20px",
-                      backgroundColor: "#f59e0b",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    Kembali ke Standby (Spasi / Esc)
-                  </button>
                 </div>
               )}
 
-              {/* STATUS 4: TIKET EXPIRED */}
+              {/* ===================================================== */}
+              {/* STATUS 4: TIKET EXPIRED                               */}
+              {/* ===================================================== */}
               {!loading && screenState === "EXPIRED" && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", animation: "fadeIn 0.3s" }}>
                   <div style={{
@@ -901,32 +842,11 @@ export default function PosTimbang() {
                     fontWeight: 800,
                     color: "#0f172a",
                     lineHeight: 1.25,
-                    margin: "0 0 20px 0",
+                    margin: "0",
                     letterSpacing: "-0.5px"
                   }}>
                     TIKET EXPIRED
                   </h2>
-
-                  <button
-                    onClick={() => {
-                      setScreenState("STANDBY");
-                      setBarcodeInput("");
-                      setValidationResult(null);
-                      if (inputRef.current) inputRef.current.focus();
-                    }}
-                    style={{
-                      padding: "8px 20px",
-                      backgroundColor: "#ef4444",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    Scan Tiket Lain (Spasi / Esc)
-                  </button>
                 </div>
               )}
 
