@@ -18,18 +18,6 @@ const SCANNER_MAX_MS_PER_CHAR = 80;
 const SCANNER_BURST_GAP_MS = 150;
 const DUPLICATE_SCAN_WINDOW_MS = 2000;
 
-interface RecentWeighing {
-  id: number;
-  booking_code: string;
-  ticket_number?: string;
-  license_plate: string;
-  actual_weight: number;
-  weigh_status: string;
-  is_stable: boolean;
-  created_at: string;
-  operator_username?: string;
-}
-
 export default function PosTimbang() {
   const telemetry = useWeightStream();
 
@@ -52,7 +40,6 @@ export default function PosTimbang() {
     searchType: string;
     snapshot: { weight: number; isStable: boolean; deviceId: string };
   } | null>(null);
-  const [recentWeighings, setRecentWeighings] = useState<RecentWeighing[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -113,27 +100,6 @@ export default function PosTimbang() {
       // Audio autoplay policy fallback
     }
   }, []);
-
-  // Fetch recent weighings from backend
-  const fetchRecentWeighings = useCallback(async () => {
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/weighbridge/recent`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setRecentWeighings(data);
-        }
-      }
-    } catch {
-      // Ignore background fetch errors
-    }
-  }, [apiBaseUrl]);
-
-  useEffect(() => {
-    fetchRecentWeighings();
-    const timer = setInterval(fetchRecentWeighings, 15000);
-    return () => clearInterval(timer);
-  }, [fetchRecentWeighings]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -291,13 +257,12 @@ export default function PosTimbang() {
     } finally {
       submittingRef.current = false;
       setLoading(false);
-      fetchRecentWeighings();
       if (inputRef.current) {
         inputRef.current.focus();
         inputRef.current.select();
       }
     }
-  }, [apiBaseUrl, operatorName, pendingScan, playAudioTone, searchType, telemetry.deviceId, telemetry.isConnected, telemetry.isStable, telemetry.weight, fetchRecentWeighings]);
+  }, [apiBaseUrl, operatorName, pendingScan, playAudioTone, searchType, telemetry.deviceId, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
 
   validateRef.current = validateBarcode;
 
@@ -1031,88 +996,6 @@ export default function PosTimbang() {
 
             </div>
           </div>
-        </div>
-
-        {/* ========================================================= */}
-        {/* TABEL 10 RIWAYAT PENIMBANGAN TERAKHIR                     */}
-        {/* ========================================================= */}
-        <div style={{
-          backgroundColor: "#ffffff",
-          border: "1.5px solid #e2e8f0",
-          borderRadius: "16px",
-          padding: "20px 24px",
-          boxSizing: "border-box"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
-            <span style={{ fontSize: "13px", fontWeight: 700, color: "#64748b", letterSpacing: "0.5px" }}>
-              RIWAYAT PENIMBANGAN TERBARU (10 TRANSAKSI TERAKHIR)
-            </span>
-            <button
-              onClick={fetchRecentWeighings}
-              style={{
-                fontSize: "12px",
-                color: "#0369a1",
-                backgroundColor: "#f0f9ff",
-                border: "1px solid #bae6fd",
-                borderRadius: "6px",
-                padding: "3px 10px",
-                fontWeight: 600,
-                cursor: "pointer"
-              }}
-            >
-              🔄 Segarkan
-            </button>
-          </div>
-
-          {recentWeighings.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "20px 0", color: "#94a3b8", fontSize: "13px" }}>
-              Belum ada riwayat penimbangan tercatat.
-            </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1.5px solid #cbd5e1", textAlign: "left", color: "#64748b" }}>
-                    <th style={{ padding: "8px 12px" }}>Waktu</th>
-                    <th style={{ padding: "8px 12px" }}>Kode Booking</th>
-                    <th style={{ padding: "8px 12px" }}>No. Tiket</th>
-                    <th style={{ padding: "8px 12px" }}>No. Polisi</th>
-                    <th style={{ padding: "8px 12px", textAlign: "right" }}>Berat (kg)</th>
-                    <th style={{ padding: "8px 12px", textAlign: "center" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentWeighings.map((row) => (
-                    <tr key={row.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: "10px 12px", color: "#64748b" }}>
-                        {row.created_at ? new Date(row.created_at).toLocaleTimeString("id-ID") : "-"}
-                      </td>
-                      <td style={{ padding: "10px 12px", fontWeight: 700, color: "#0f172a" }}>{row.booking_code}</td>
-                      <td style={{ padding: "10px 12px", color: "#334155" }}>{row.ticket_number || "-"}</td>
-                      <td style={{ padding: "10px 12px", color: "#334155" }}>{row.license_plate}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700, color: "#0056b3" }}>
-                        {row.actual_weight != null ? Math.round(row.actual_weight).toLocaleString("id-ID") : "0"}
-                      </td>
-                      <td style={{ padding: "10px 12px", textAlign: "center" }}>
-                        <span style={{
-                          padding: "3px 8px",
-                          borderRadius: "4px",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          backgroundColor:
-                            row.weigh_status === "SUCCESS" ? "#dcfce7" : row.weigh_status === "SUPERSEDED" ? "#f1f5f9" : "#fee2e2",
-                          color:
-                            row.weigh_status === "SUCCESS" ? "#15803d" : row.weigh_status === "SUPERSEDED" ? "#64748b" : "#b91c1c"
-                        }}>
-                          {row.weigh_status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </main>
 
