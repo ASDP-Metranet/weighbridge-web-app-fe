@@ -166,9 +166,15 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
             // Ponytail: Tare / Negative Normalization - negative drift becomes 0.0 kg
             const rawWeight = typeof data.weight === "number" ? data.weight : parseFloat(data.weight) || 0;
             const normalizedWeight = Math.max(0, Math.round(rawWeight * 1000) / 1000);
-            const hardwareStable = Boolean(data.stable);
-
-            const isStable = evaluateStabilization(normalizedWeight, hardwareStable);
+            // Ponytail: Gunakan flag kestabilan langsung dari indikator hardware/loket-adapter (ST/US)
+            const hardwareStable = Boolean(
+              data.stable !== undefined
+                ? data.stable
+                : data.isStable !== undefined
+                ? data.isStable
+                : evaluateStabilization(normalizedWeight, true)
+            );
+            const isStable = hardwareStable;
 
             setTelemetry((prev) => ({
               ...prev,

@@ -17,6 +17,7 @@ const AUTO_SCAN_DEBOUNCE_MS = 250;
 const SCANNER_MAX_MS_PER_CHAR = 80;
 const SCANNER_BURST_GAP_MS = 150;
 const DUPLICATE_SCAN_WINDOW_MS = 2000;
+const MANUAL_CLEANUP_DELAY_MS = 1000;
 
 export default function PosTimbang() {
   const telemetry = useWeightStream();
@@ -45,6 +46,7 @@ export default function PosTimbang() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const manualResetTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastKeyTsRef = useRef(0);
   const burstStartRef = useRef(0);
   const burstCharsRef = useRef(0);
@@ -58,6 +60,7 @@ export default function PosTimbang() {
   // Clean timer on unmount
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (manualResetTimerRef.current) clearTimeout(manualResetTimerRef.current);
   }, []);
 
   // Web Audio alert synthesizer
@@ -268,6 +271,19 @@ export default function PosTimbang() {
 
   const handleValidate = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (manualResetTimerRef.current) clearTimeout(manualResetTimerRef.current);
+    const now = Date.now();
+    const chars = burstCharsRef.current;
+    const msPerChar = (now - burstStartRef.current) / Math.max(chars - 1, 1);
+    const isScannerBurst = chars >= AUTO_SCAN_MIN_LENGTH && msPerChar <= SCANNER_MAX_MS_PER_CHAR;
+
+    if (!isScannerBurst) {
+      // Ketikan manual ditekan Enter: tolak senyap dan auto-clear input
+      setBarcodeInput("");
+      burstCharsRef.current = 0;
+      return;
+    }
+
     validateBarcode(barcodeInput);
   };
 
@@ -297,16 +313,25 @@ export default function PosTimbang() {
 
     setBarcodeInput(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (manualResetTimerRef.current) clearTimeout(manualResetTimerRef.current);
 
-    if (value.trim().length < AUTO_SCAN_MIN_LENGTH) return;
+    if (value.trim().length === 0) return;
 
     const chars = burstCharsRef.current;
     const msPerChar = (now - burstStartRef.current) / Math.max(chars - 1, 1);
-    if (chars < AUTO_SCAN_MIN_LENGTH || msPerChar > SCANNER_MAX_MS_PER_CHAR) return;
+    const isScannerBurst = chars >= AUTO_SCAN_MIN_LENGTH && msPerChar <= SCANNER_MAX_MS_PER_CHAR;
 
-    debounceRef.current = setTimeout(() => {
-      if (validateRef.current) validateRef.current(value);
-    }, AUTO_SCAN_DEBOUNCE_MS);
+    if (isScannerBurst) {
+      debounceRef.current = setTimeout(() => {
+        if (validateRef.current) validateRef.current(value);
+      }, AUTO_SCAN_DEBOUNCE_MS);
+    } else {
+      // Ketikan manual: abaikan dan auto-clear senyap
+      manualResetTimerRef.current = setTimeout(() => {
+        setBarcodeInput("");
+        burstCharsRef.current = 0;
+      }, MANUAL_CLEANUP_DELAY_MS);
+    }
   };
 
   const displayWeight = validationResult?.recordedWeight != null
@@ -538,6 +563,7 @@ export default function PosTimbang() {
                       type="text"
                       value={barcodeInput}
                       onChange={handleInputChange}
+                      onPaste={(e) => e.preventDefault()}
                       placeholder={loading ? "Memvalidasi tiket..." : "Scan Barcode untuk input"}
                       readOnly={loading || !!pendingScan}
                       autoComplete="off"
