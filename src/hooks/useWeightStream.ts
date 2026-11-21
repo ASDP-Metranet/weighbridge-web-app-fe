@@ -34,7 +34,7 @@ const DEFAULT_OPTIONS: Required<UseWeightStreamOptions> = {
   settlingWindowMs: 1500,
   watchdogTimeoutMs: 20000,
   reconnectIntervalMs: 3000,
-  deviceId: "WB-MERAK-01",
+  deviceId: "",
 };
 
 export function useWeightStream(options?: UseWeightStreamOptions) {
@@ -184,7 +184,7 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
               unit: (data.unit || "kg").toLowerCase(),
               rawString: data.raw || "",
               port: currentPortRef.current,
-              deviceId: config.deviceId,
+              deviceId: data.deviceId || config.deviceId || "",
               lastUpdated: new Date(),
             }));
           } catch (err) {

@@ -55,7 +55,7 @@ export default function PosTimbang() {
   const validateRef = useRef<((input: string, options?: { snapshot?: { weight: number; isStable: boolean; deviceId: string }; searchType?: string }) => Promise<void>) | null>(null);
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_WEIGHBRIDGE_URL || "http://localhost:8090";
-  const operatorName = process.env.NEXT_PUBLIC_OPERATOR_NAME || "operator_timbang";
+  const operatorName = process.env.NEXT_PUBLIC_OPERATOR_NAME || "-";
 
   // Clean timer on unmount
   useEffect(() => () => {
@@ -210,7 +210,7 @@ export default function PosTimbang() {
           searchType: reqSearchType,
           actualWeight: wt.weight,
           isStable: wt.isStable,
-          operatorUsername: operatorName,
+          operatorUsername: operatorName !== "-" ? operatorName : undefined,
           deviceId: wt.deviceId,
         }),
       });
@@ -394,7 +394,7 @@ export default function PosTimbang() {
               TERMINAL POS JEMBATAN TIMBANG
             </span>
             <span style={{ fontSize: "11px", backgroundColor: "#e0f2fe", color: "#0369a1", padding: "2px 8px", borderRadius: "4px", fontWeight: 700 }}>
-              {telemetry.deviceId || "WB-MERAK-01"}
+              {telemetry.deviceId || "-"}
             </span>
           </div>
 
