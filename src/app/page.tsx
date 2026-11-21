@@ -952,13 +952,12 @@ export default function PosTimbang() {
         </div>
       </main>
 
-      {/* POPUP KONFIRMASI BOBOT BELUM STABIL */}
+      {/* POPUP KONFIRMASI BOBOT BELUM STABIL (DISAMAKAN DENGAN MODALCONFIRMATION DI LOKET-WEB-APP-FE) */}
       {pendingScan && (
         <div style={{
           position: "fixed",
           inset: 0,
-          backgroundColor: "rgba(15, 23, 42, 0.6)",
-          backdropFilter: "blur(2px)",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -966,49 +965,122 @@ export default function PosTimbang() {
           padding: "20px"
         }}>
           <div style={{
+            position: "relative",
             backgroundColor: "#ffffff",
-            borderRadius: "16px",
-            maxWidth: "460px",
+            borderRadius: "8px",
+            maxWidth: "450px",
             width: "100%",
-            padding: "28px",
-            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+            padding: "16px 15px 24px 15px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            boxSizing: "border-box"
           }}>
-            <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a", margin: "0 0 12px 0" }}>
+            {/* Close Button Top Right */}
+            <button
+              type="button"
+              aria-label="close"
+              onClick={handleCancelUnstable}
+              style={{
+                position: "absolute",
+                top: "8px",
+                right: "8px",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "8px",
+                color: "#e11d48",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "50%",
+                lineHeight: 1
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+
+            {/* HelpOutline Icon Blue */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginTop: "8px" }}>
+              <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#1A73E8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="2.5" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#344767",
+              textAlign: "center",
+              lineHeight: "20px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "0px"
+            }}>
               Bobot Belum Stabil
             </h3>
-            <p style={{ fontSize: "14px", color: "#475569", lineHeight: 1.5, margin: "0 0 24px 0" }}>
-              Bobot terbaca <strong>{Math.round(pendingScan.snapshot.weight).toLocaleString("id-ID")} kg</strong> dan belum stabil, kendaraan kemungkinan masih bergerak. Pilih &quot;Tunggu Stabil&quot; lalu scan ulang setelah kendaraan berhenti sempurna, atau &quot;Tetap Proses&quot; untuk melanjutkan dengan bobot saat ini.
+
+            {/* Description */}
+            <p style={{
+              fontSize: "16px",
+              fontWeight: 400,
+              color: "#475569",
+              textAlign: "center",
+              lineHeight: "20px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "20px"
+            }}>
+              Bobot terbaca {Math.round(pendingScan.snapshot.weight).toLocaleString("id-ID")} kg dan belum stabil, kendaraan kemungkinan masih bergerak. Pilih &quot;Tunggu Stabil&quot; lalu scan ulang setelah kendaraan berhenti sempurna, atau &quot;Tetap Proses&quot; untuk melanjutkan dengan bobot saat ini.
             </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+
+            {/* Action Buttons */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", width: "100%" }}>
               <button
+                type="button"
+                onClick={handleConfirmUnstable}
+                style={{
+                  height: "36px",
+                  padding: "6px 18px",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "#1A73E8",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  cursor: "pointer",
+                  boxShadow: "0 3px 5px -1px rgba(26, 115, 232, 0.3)"
+                }}
+              >
+                Tetap Proses
+              </button>
+              <button
+                type="button"
                 onClick={handleCancelUnstable}
                 style={{
-                  padding: "9px 16px",
-                  borderRadius: "8px",
-                  border: "1.5px solid #cbd5e1",
-                  backgroundColor: "#ffffff",
-                  color: "#475569",
+                  height: "36px",
+                  padding: "6px 18px",
+                  borderRadius: "6px",
+                  border: "1.5px solid #1A73E8",
+                  backgroundColor: "transparent",
+                  color: "#1A73E8",
                   fontSize: "13px",
-                  fontWeight: 600,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
                   cursor: "pointer"
                 }}
               >
                 Tunggu Stabil
-              </button>
-              <button
-                onClick={handleConfirmUnstable}
-                style={{
-                  padding: "9px 18px",
-                  borderRadius: "8px",
-                  border: "none",
-                  backgroundColor: "#0056b3",
-                  color: "#ffffff",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  cursor: "pointer"
-                }}
-              >
-                Tetap Proses
               </button>
             </div>
           </div>
