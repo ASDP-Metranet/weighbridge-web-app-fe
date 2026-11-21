@@ -19,6 +19,13 @@ const SCANNER_BURST_GAP_MS = 150;
 const DUPLICATE_SCAN_WINDOW_MS = 2000;
 const MANUAL_CLEANUP_DELAY_MS = 1000;
 
+// Konfigurasi input manual barcode dari ENV (bisa diedit jika di-set "true" / "1")
+const ALLOW_MANUAL_INPUT =
+  process.env.NEXT_PUBLIC_ALLOW_MANUAL_INPUT === "true" ||
+  process.env.NEXT_PUBLIC_ALLOW_MANUAL_INPUT === "1" ||
+  process.env.NEXT_PUBLIC_ENABLE_MANUAL_INPUT === "true" ||
+  process.env.NEXT_PUBLIC_BARCODE_MANUAL_INPUT === "true";
+
 export default function PosTimbang() {
   const telemetry = useWeightStream();
 
@@ -277,8 +284,8 @@ export default function PosTimbang() {
     const msPerChar = (now - burstStartRef.current) / Math.max(chars - 1, 1);
     const isScannerBurst = chars >= AUTO_SCAN_MIN_LENGTH && msPerChar <= SCANNER_MAX_MS_PER_CHAR;
 
-    if (!isScannerBurst) {
-      // Ketikan manual ditekan Enter: tolak senyap dan auto-clear input
+    if (!isScannerBurst && !ALLOW_MANUAL_INPUT) {
+      // Ketikan manual ditekan Enter tapi manual input tidak diizinkan via ENV: tolak senyap dan auto-clear input
       setBarcodeInput("");
       burstCharsRef.current = 0;
       return;
@@ -325,8 +332,8 @@ export default function PosTimbang() {
       debounceRef.current = setTimeout(() => {
         if (validateRef.current) validateRef.current(value);
       }, AUTO_SCAN_DEBOUNCE_MS);
-    } else {
-      // Ketikan manual: abaikan dan auto-clear senyap
+    } else if (!ALLOW_MANUAL_INPUT) {
+      // Ketikan manual: jika tidak diizinkan via ENV, abaikan dan auto-clear senyap
       manualResetTimerRef.current = setTimeout(() => {
         setBarcodeInput("");
         burstCharsRef.current = 0;
@@ -563,7 +570,7 @@ export default function PosTimbang() {
                       type="text"
                       value={barcodeInput}
                       onChange={handleInputChange}
-                      onPaste={(e) => e.preventDefault()}
+                      onPaste={ALLOW_MANUAL_INPUT ? undefined : (e) => e.preventDefault()}
                       placeholder={loading ? "Memvalidasi tiket..." : "Scan Barcode untuk input"}
                       readOnly={loading || !!pendingScan}
                       autoComplete="off"
