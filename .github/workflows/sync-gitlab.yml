@@ -1,0 +1,35 @@
+name: Sync to GitLab
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-gitlab-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Push dev to GitLab
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_SYNC_TOKEN }}
+          GITLAB_USERNAME: badrus123
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          : "${GITLAB_TOKEN:?Missing GITLAB_SYNC_TOKEN repository secret}"
+          git -c credential.helper= \
+            -c 'credential.helper=!f() { printf "%s\n" "username=x-access-token" "password=$GH_TOKEN"; }; f' \
+            clone --bare --single-branch --branch dev \
+            "https://github.com/${GITHUB_REPOSITORY}.git" "$RUNNER_TEMP/gitlab-sync.git"
+          git --git-dir="$RUNNER_TEMP/gitlab-sync.git" -c credential.helper= \
+            -c 'credential.helper=!f() { printf "%s\n" "username=$GITLAB_USERNAME" "password=$GITLAB_TOKEN"; }; f' \
+            push https://gitlab.com/asdp2132340/loket/asdp-metranet-weighbridge-web-app/weighbridge-web-app-fe.git HEAD:refs/heads/dev
