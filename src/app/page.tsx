@@ -48,6 +48,10 @@ export default function PosTimbang() {
     searchType: string;
     snapshot: { weight: number; isStable: boolean; deviceId: string };
   } | null>(null);
+  const [pendingDisconnectedScan, setPendingDisconnectedScan] = useState<{
+    code: string;
+    searchType: string;
+  } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -136,7 +140,7 @@ export default function PosTimbang() {
   // Global click refocus for physical barcode scanner
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
-      if (pendingScan) return;
+      if (pendingScan || pendingDisconnectedScan) return;
       if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) {
         return;
       }
@@ -150,7 +154,7 @@ export default function PosTimbang() {
     };
     window.addEventListener("click", handleGlobalClick);
     return () => window.removeEventListener("click", handleGlobalClick);
-  }, [screenState, pendingScan]);
+  }, [screenState, pendingScan, pendingDisconnectedScan]);
 
   // Keyboard shortcut: Space / Escape resets instantly to STANDBY
   useEffect(() => {
@@ -159,6 +163,15 @@ export default function PosTimbang() {
         if (e.code === "Escape") {
           e.preventDefault();
           setPendingScan(null);
+          setBarcodeInput("");
+          if (inputRef.current) inputRef.current.focus();
+        }
+        return;
+      }
+      if (pendingDisconnectedScan) {
+        if (e.code === "Escape") {
+          e.preventDefault();
+          setPendingDisconnectedScan(null);
           setBarcodeInput("");
           if (inputRef.current) inputRef.current.focus();
         }
@@ -173,15 +186,15 @@ export default function PosTimbang() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [screenState, pendingScan]);
+  }, [screenState, pendingScan, pendingDisconnectedScan]);
 
   // Validate barcode
-  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean; deviceId: string }; searchType?: string } = {}) => {
+  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean; deviceId: string }; searchType?: string; forceDisconnected?: boolean } = {}) => {
     const cleanInput = (rawInput || "").trim().toUpperCase();
     if (!cleanInput) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (submittingRef.current || (pendingScan && !options.snapshot)) return;
+    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected)) return;
 
     const wt = options.snapshot || {
       weight: telemetry.weight,
@@ -190,7 +203,13 @@ export default function PosTimbang() {
     };
     const reqSearchType = options.searchType || searchType;
 
-    // Unstable check
+    // 1. Cek jika sensor terputus: minta konfirmasi petugas apakah tetap memproses atau batal
+    if (!options.forceDisconnected && !telemetry.isConnected) {
+      setPendingDisconnectedScan({ code: cleanInput, searchType: reqSearchType });
+      return;
+    }
+
+    // 2. Cek jika sensor terhubung tapi bobot belum stabil: tahan dan tampilkan modal "Bobot Belum Stabil"
     if (!options.snapshot && telemetry.isConnected && !telemetry.isStable) {
       setPendingScan({ code: cleanInput, searchType: reqSearchType, snapshot: wt });
       return;
@@ -298,6 +317,19 @@ export default function PosTimbang() {
     setPendingScan(null);
     setBarcodeInput("");
     if (inputRef.current) inputRef.current.focus();
+  };
+
+  const handleCancelDisconnected = () => {
+    setPendingDisconnectedScan(null);
+    setBarcodeInput("");
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  const handleConfirmDisconnected = () => {
+    const pending = pendingDisconnectedScan;
+    if (!pending) return;
+    setPendingDisconnectedScan(null);
+    validateBarcode(pending.code, { forceDisconnected: true, searchType: pending.searchType });
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -565,7 +597,7 @@ export default function PosTimbang() {
                       onChange={handleInputChange}
                       onPaste={ALLOW_MANUAL_INPUT ? undefined : (e) => e.preventDefault()}
                       placeholder={loading ? "Memvalidasi tiket..." : "Scan Barcode untuk input"}
-                      readOnly={loading || !!pendingScan}
+                      readOnly={loading || !!pendingScan || !!pendingDisconnectedScan}
                       autoComplete="off"
                       style={{
                         width: "100%",
@@ -1004,7 +1036,7 @@ export default function PosTimbang() {
               paddingTop: "14px",
               paddingBottom: "24px"
             }}>
-              Bobot terbaca {Math.round(pendingScan.snapshot.weight).toLocaleString("id-ID")} kg dan belum stabil (kendaraan kemungkinan masih bergerak). Silakan tunggu hingga kendaraan berhenti sempurna dan indikator menjadi STABIL sebelum memindai tiket kembali.
+              Bobot belum stabil (kendaraan kemungkinan masih bergerak). Silakan tunggu hingga kendaraan berhenti sempurna dan indikator menjadi STABIL sebelum memindai tiket kembali.
             </p>
 
             {/* Action Buttons: Tunggu Stabil Single Button */}
@@ -1028,6 +1060,114 @@ export default function PosTimbang() {
                 }}
               >
                 Tunggu Stabil
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP KONFIRMASI SENSOR TERPUTUS */}
+      {pendingDisconnectedScan && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 100,
+          padding: "20px"
+        }}>
+          <div style={{
+            position: "relative",
+            backgroundColor: "#ffffff",
+            borderRadius: "8px",
+            maxWidth: "450px",
+            width: "100%",
+            padding: "24px 20px 24px 20px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            boxSizing: "border-box"
+          }}>
+            {/* HelpOutline Icon */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginTop: "4px" }}>
+              <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#1A73E8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="2.5" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#344767",
+              textAlign: "center",
+              lineHeight: "20px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "0px"
+            }}>
+              Sensor Timbangan Terputus
+            </h3>
+
+            {/* Description */}
+            <p style={{
+              fontSize: "16px",
+              fontWeight: 400,
+              color: "#475569",
+              textAlign: "center",
+              lineHeight: "22px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "24px"
+            }}>
+              Koneksi ke alat jembatan timbang terputus. Kendaraan akan diproses tanpa data berat timbangan (NOT_WEIGHED). Apakah Anda yakin ingin tetap memproses tiket ini?
+            </p>
+
+            {/* Action Buttons: TETAP PROSES & BATAL */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", width: "100%" }}>
+              <button
+                type="button"
+                onClick={handleConfirmDisconnected}
+                style={{
+                  height: "36px",
+                  padding: "6px 20px",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "#1A73E8",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  cursor: "pointer",
+                  boxShadow: "0 3px 5px -1px rgba(26, 115, 232, 0.3)"
+                }}
+              >
+                Tetap Proses
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelDisconnected}
+                style={{
+                  height: "36px",
+                  padding: "6px 20px",
+                  borderRadius: "6px",
+                  border: "1.5px solid #1A73E8",
+                  backgroundColor: "transparent",
+                  color: "#1A73E8",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  cursor: "pointer"
+                }}
+              >
+                Batal
               </button>
             </div>
           </div>
