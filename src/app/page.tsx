@@ -46,7 +46,7 @@ export default function PosTimbang() {
   const [pendingScan, setPendingScan] = useState<{
     code: string;
     searchType: string;
-    snapshot: { weight: number; isStable: boolean; deviceId: string };
+    snapshot: { weight: number; isStable: boolean };
   } | null>(null);
   const [pendingDisconnectedScan, setPendingDisconnectedScan] = useState<{
     code: string;
@@ -63,7 +63,7 @@ export default function PosTimbang() {
   const burstCharsRef = useRef(0);
   const submittingRef = useRef(false);
   const lastSubmitRef = useRef({ value: "", ts: 0 });
-  const validateRef = useRef<((input: string, options?: { snapshot?: { weight: number; isStable: boolean; deviceId: string }; searchType?: string }) => Promise<void>) | null>(null);
+  const validateRef = useRef<((input: string, options?: { snapshot?: { weight: number; isStable: boolean }; searchType?: string }) => Promise<void>) | null>(null);
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_WEIGHBRIDGE_URL || "http://localhost:8090";
   const operatorName = process.env.NEXT_PUBLIC_OPERATOR_NAME || "-";
@@ -189,7 +189,7 @@ export default function PosTimbang() {
   }, [screenState, pendingScan, pendingDisconnectedScan]);
 
   // Validate barcode
-  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean; deviceId: string }; searchType?: string; forceDisconnected?: boolean } = {}) => {
+  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean } = {}) => {
     const cleanInput = (rawInput || "").trim().toUpperCase();
     if (!cleanInput) return;
 
@@ -199,7 +199,6 @@ export default function PosTimbang() {
     const wt = options.snapshot || {
       weight: telemetry.weight,
       isStable: telemetry.isStable,
-      deviceId: telemetry.deviceId,
     };
     const reqSearchType = options.searchType || searchType;
 
@@ -237,7 +236,6 @@ export default function PosTimbang() {
           actualWeight: wt.weight,
           isStable: wt.isStable,
           operatorUsername: operatorName !== "-" ? operatorName : undefined,
-          deviceId: wt.deviceId,
         }),
       });
 
@@ -291,7 +289,7 @@ export default function PosTimbang() {
         inputRef.current.select();
       }
     }
-  }, [apiBaseUrl, operatorName, pendingScan, playAudioTone, searchType, telemetry.deviceId, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
+  }, [apiBaseUrl, operatorName, pendingScan, playAudioTone, searchType, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
 
   validateRef.current = validateBarcode;
 
@@ -424,9 +422,6 @@ export default function PosTimbang() {
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>
               TERMINAL POS JEMBATAN TIMBANG
-            </span>
-            <span style={{ fontSize: "11px", backgroundColor: "#e0f2fe", color: "#0369a1", padding: "2px 8px", borderRadius: "4px", fontWeight: 700 }}>
-              {telemetry.deviceId || "-"}
             </span>
           </div>
 

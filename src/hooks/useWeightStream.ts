@@ -7,7 +7,6 @@ export interface WeightTelemetry {
   isStable: boolean;
   isConnected: boolean;
   unit: string;
-  deviceId: string;
   port?: string;
   rawString?: string;
   lastUpdated?: Date;
@@ -19,7 +18,6 @@ export interface UseWeightStreamOptions {
   settlingWindowMs?: number;
   watchdogTimeoutMs?: number;
   reconnectIntervalMs?: number;
-  deviceId?: string;
 }
 
 interface WeightSample {
@@ -34,7 +32,6 @@ const DEFAULT_OPTIONS: Required<UseWeightStreamOptions> = {
   settlingWindowMs: 1500,
   watchdogTimeoutMs: 20000,
   reconnectIntervalMs: 3000,
-  deviceId: "",
 };
 
 export function useWeightStream(options?: UseWeightStreamOptions) {
@@ -45,7 +42,6 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
     isStable: false,
     isConnected: false,
     unit: "kg",
-    deviceId: config.deviceId,
   });
 
   const samplesRef = useRef<WeightSample[]>([]);
@@ -184,7 +180,6 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
               unit: (data.unit || "kg").toLowerCase(),
               rawString: data.raw || "",
               port: currentPortRef.current,
-              deviceId: data.deviceId || config.deviceId || "",
               lastUpdated: new Date(),
             }));
           } catch (err) {
@@ -234,7 +229,7 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
         eventSourceRef.current = null;
       }
     };
-  }, [config.adapterUrl, config.deviceId, config.reconnectIntervalMs, evaluateStabilization, kickWatchdog]);
+  }, [config.adapterUrl, config.reconnectIntervalMs, evaluateStabilization, kickWatchdog]);
 
   return telemetry;
 }
