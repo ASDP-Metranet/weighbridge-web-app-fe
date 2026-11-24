@@ -33,4 +33,10 @@ yarn-error.log*
 next-env.d.ts
 
 .forgeguard/
+
+# evidence testing
+*.pdf
 recordings/
+screenshots/
+evidence/
+evidence-testing/
