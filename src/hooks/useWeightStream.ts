@@ -159,22 +159,22 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
 
           try {
             const data = JSON.parse(e.data);
-            // Ponytail: Tare / Negative Normalization - negative drift becomes 0.0 kg
+            // Mempertahankan nilai bobot asli dari sensor (termasuk 0 atau nilai minus untuk deteksi deviasi tare)
             const rawWeight = typeof data.weight === "number" ? data.weight : parseFloat(data.weight) || 0;
-            const normalizedWeight = Math.max(0, Math.round(rawWeight * 1000) / 1000);
-            // Ponytail: Gunakan flag kestabilan langsung dari indikator hardware/loket-adapter (ST/US)
+            const currentWeight = Math.round(rawWeight * 1000) / 1000;
+            // Gunakan flag kestabilan langsung dari indikator hardware/loket-adapter (ST/US)
             const hardwareStable = Boolean(
               data.stable !== undefined
                 ? data.stable
                 : data.isStable !== undefined
                 ? data.isStable
-                : evaluateStabilization(normalizedWeight, true)
+                : evaluateStabilization(currentWeight, true)
             );
             const isStable = hardwareStable;
 
             setTelemetry((prev) => ({
               ...prev,
-              weight: normalizedWeight,
+              weight: currentWeight,
               isStable,
               isConnected: true,
               unit: (data.unit || "kg").toLowerCase(),

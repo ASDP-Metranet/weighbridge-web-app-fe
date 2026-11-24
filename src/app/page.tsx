@@ -26,6 +26,13 @@ const ALLOW_MANUAL_INPUT =
   process.env.NEXT_PUBLIC_ENABLE_MANUAL_INPUT === "true" ||
   process.env.NEXT_PUBLIC_BARCODE_MANUAL_INPUT === "true";
 
+// Konfigurasi apakah nilai bobot <= 0 boleh diproses (true = konfirmasi TETAP PROSES / BATAL, false = blokir TUTUP)
+const ALLOW_ZERO_OR_NEGATIVE_WEIGHT =
+  process.env.NEXT_PUBLIC_ALLOW_ZERO_OR_NEGATIVE_WEIGHT === "true" ||
+  process.env.NEXT_PUBLIC_ALLOW_ZERO_OR_NEGATIVE_WEIGHT === "1" ||
+  process.env.NEXT_PUBLIC_ALLOW_ZERO_WEIGHT === "true" ||
+  process.env.NEXT_PUBLIC_ALLOW_ZERO_WEIGHT === "1";
+
 export default function PosTimbang() {
   const telemetry = useWeightStream();
 
@@ -51,6 +58,11 @@ export default function PosTimbang() {
   const [pendingDisconnectedScan, setPendingDisconnectedScan] = useState<{
     code: string;
     searchType: string;
+  } | null>(null);
+  const [pendingZeroWeightScan, setPendingZeroWeightScan] = useState<{
+    code: string;
+    searchType: string;
+    weight: number;
   } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -140,7 +152,7 @@ export default function PosTimbang() {
   // Global click refocus for physical barcode scanner
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
-      if (pendingScan || pendingDisconnectedScan) return;
+      if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan) return;
       if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) {
         return;
       }
@@ -154,7 +166,7 @@ export default function PosTimbang() {
     };
     window.addEventListener("click", handleGlobalClick);
     return () => window.removeEventListener("click", handleGlobalClick);
-  }, [screenState, pendingScan, pendingDisconnectedScan]);
+  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan]);
 
   // Keyboard shortcut: Space / Escape resets instantly to STANDBY
   useEffect(() => {
@@ -177,6 +189,15 @@ export default function PosTimbang() {
         }
         return;
       }
+      if (pendingZeroWeightScan) {
+        if (e.code === "Escape") {
+          e.preventDefault();
+          setPendingZeroWeightScan(null);
+          setBarcodeInput("");
+          if (inputRef.current) inputRef.current.focus();
+        }
+        return;
+      }
       if (screenState !== "STANDBY" && (e.code === "Space" || e.code === "Escape")) {
         e.preventDefault();
         setScreenState("STANDBY");
@@ -186,15 +207,15 @@ export default function PosTimbang() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [screenState, pendingScan, pendingDisconnectedScan]);
+  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan]);
 
   // Validate barcode
-  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean } = {}) => {
+  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean; forceZeroWeight?: boolean } = {}) => {
     const cleanInput = (rawInput || "").trim().toUpperCase();
     if (!cleanInput) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected)) return;
+    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected) || (pendingZeroWeightScan && !options.forceZeroWeight)) return;
 
     const wt = options.snapshot || {
       weight: telemetry.weight,
@@ -208,7 +229,13 @@ export default function PosTimbang() {
       return;
     }
 
-    // 2. Cek jika sensor terhubung tapi bobot belum stabil: tahan dan tampilkan modal "Bobot Belum Stabil"
+    // 2. Cek jika sensor terhubung tapi bobot <= 0 (0 atau minus): tahan dan tampilkan dialog konfirmasi/pemblokiran
+    if (!options.forceZeroWeight && telemetry.isConnected && wt.weight <= 0) {
+      setPendingZeroWeightScan({ code: cleanInput, searchType: reqSearchType, weight: wt.weight });
+      return;
+    }
+
+    // 3. Cek jika sensor terhubung tapi bobot belum stabil: tahan dan tampilkan modal "Bobot Belum Stabil"
     if (!options.snapshot && telemetry.isConnected && !telemetry.isStable) {
       setPendingScan({ code: cleanInput, searchType: reqSearchType, snapshot: wt });
       return;
@@ -289,7 +316,7 @@ export default function PosTimbang() {
         inputRef.current.select();
       }
     }
-  }, [apiBaseUrl, operatorName, pendingScan, playAudioTone, searchType, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
+  }, [apiBaseUrl, operatorName, pendingDisconnectedScan, pendingScan, pendingZeroWeightScan, playAudioTone, searchType, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
 
   validateRef.current = validateBarcode;
 
@@ -328,6 +355,23 @@ export default function PosTimbang() {
     if (!pending) return;
     setPendingDisconnectedScan(null);
     validateBarcode(pending.code, { forceDisconnected: true, searchType: pending.searchType });
+  };
+
+  const handleCancelZeroWeight = () => {
+    setPendingZeroWeightScan(null);
+    setBarcodeInput("");
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  const handleConfirmZeroWeight = () => {
+    const pending = pendingZeroWeightScan;
+    if (!pending) return;
+    setPendingZeroWeightScan(null);
+    validateBarcode(pending.code, {
+      forceZeroWeight: true,
+      searchType: pending.searchType,
+      snapshot: { weight: pending.weight, isStable: true }
+    });
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -590,9 +634,15 @@ export default function PosTimbang() {
                       type="text"
                       value={barcodeInput}
                       onChange={handleInputChange}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleValidate();
+                        }
+                      }}
                       onPaste={ALLOW_MANUAL_INPUT ? undefined : (e) => e.preventDefault()}
                       placeholder={loading ? "Memvalidasi tiket..." : "Scan Barcode untuk input"}
-                      readOnly={loading || !!pendingScan || !!pendingDisconnectedScan}
+                      readOnly={loading || !!pendingScan || !!pendingDisconnectedScan || !!pendingZeroWeightScan}
                       autoComplete="off"
                       style={{
                         width: "100%",
@@ -656,10 +706,13 @@ export default function PosTimbang() {
                         Sedang memvalidasi ke sistem backend...
                       </>
                     ) : (
-                      "Scan Barcode untuk input (Spasi / Esc reset)"
+                      ALLOW_MANUAL_INPUT
+                        ? "Scan Barcode untuk input (Spasi / Esc reset)"
+                        : "Hanya menerima pemindaian barcode scanner (Input keyboard dinonaktifkan)"
                     )}
                   </span>
                 </div>
+                <button type="submit" style={{ display: "none" }} aria-hidden="true" tabIndex={-1} />
               </form>
             </div>
           </div>
@@ -1165,6 +1218,141 @@ export default function PosTimbang() {
                 Batal
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP KONFIRMASI / BLOKIR BOBOT <= 0 (0 ATAU MINUS) */}
+      {pendingZeroWeightScan && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 100,
+          padding: "20px"
+        }}>
+          <div style={{
+            position: "relative",
+            backgroundColor: "#ffffff",
+            borderRadius: "8px",
+            maxWidth: "450px",
+            width: "100%",
+            padding: "24px 20px 24px 20px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            boxSizing: "border-box"
+          }}>
+            {/* HelpOutline Icon Blue */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginTop: "4px" }}>
+              <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#1A73E8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="2.5" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#344767",
+              textAlign: "center",
+              lineHeight: "20px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "0px"
+            }}>
+              {ALLOW_ZERO_OR_NEGATIVE_WEIGHT ? "Konfirmasi Bobot ≤ 0 kg" : "Bobot Tidak Valid (≤ 0 kg)"}
+            </h3>
+
+            {/* Description */}
+            <p style={{
+              fontSize: "16px",
+              fontWeight: 400,
+              color: "#475569",
+              textAlign: "center",
+              lineHeight: "22px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "24px"
+            }}>
+              {ALLOW_ZERO_OR_NEGATIVE_WEIGHT
+                ? "Timbangan membaca 0 kg atau minus. Kendaraan akan diproses tanpa data berat (NOT_WEIGHED). Lanjutkan proses?"
+                : "Timbangan membaca 0 kg atau minus. Pastikan kendaraan sudah berada di platform timbangan sebelum scan kembali."}
+            </p>
+
+            {/* Action Buttons */}
+            {ALLOW_ZERO_OR_NEGATIVE_WEIGHT ? (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", width: "100%" }}>
+                <button
+                  type="button"
+                  onClick={handleConfirmZeroWeight}
+                  style={{
+                    height: "36px",
+                    padding: "6px 20px",
+                    borderRadius: "6px",
+                    border: "none",
+                    backgroundColor: "#1A73E8",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    cursor: "pointer",
+                    boxShadow: "0 3px 5px -1px rgba(26, 115, 232, 0.3)"
+                  }}
+                >
+                  Tetap Proses
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelZeroWeight}
+                  style={{
+                    height: "36px",
+                    padding: "6px 20px",
+                    borderRadius: "6px",
+                    border: "1.5px solid #1A73E8",
+                    backgroundColor: "transparent",
+                    color: "#1A73E8",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Batal
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%" }}>
+                <button
+                  type="button"
+                  onClick={handleCancelZeroWeight}
+                  style={{
+                    height: "36px",
+                    padding: "6px 24px",
+                    borderRadius: "6px",
+                    border: "none",
+                    backgroundColor: "#1A73E8",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    cursor: "pointer",
+                    boxShadow: "0 3px 5px -1px rgba(26, 115, 232, 0.3)"
+                  }}
+                >
+                  Tutup
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
