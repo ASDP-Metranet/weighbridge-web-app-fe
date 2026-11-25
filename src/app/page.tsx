@@ -530,7 +530,7 @@ export default function PosTimbang() {
               width: "100%",
               display: "flex",
               flexDirection: "column",
-              justifyContent: "center",
+              justifyContent: "flex-start",
               padding: "48px 28px",
               boxSizing: "border-box"
             }}>
@@ -729,7 +729,7 @@ export default function PosTimbang() {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
+              justifyContent: "flex-start",
               padding: "48px 32px",
               boxSizing: "border-box",
               textAlign: "center",
