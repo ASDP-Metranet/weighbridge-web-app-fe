@@ -70,6 +70,14 @@ export default function PosTimbang() {
     searchType: string;
     weight: number;
   } | null>(null);
+  const [pendingDuplicateScan, setPendingDuplicateScan] = useState<{
+    code: string;
+  } | null>(null);
+  const lastProcessedRef = useRef<{
+    bookingCode?: string;
+    ticketNumber?: string;
+    input?: string;
+  } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -83,7 +91,7 @@ export default function PosTimbang() {
   const lastSubmitRef = useRef({ value: "", ts: 0 });
   const validateRef = useRef<((input: string, options?: { snapshot?: { weight: number; isStable: boolean }; searchType?: string }) => Promise<void>) | null>(null);
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_WEIGHBRIDGE_URL || "http://localhost:8090";
+  const apiBaseUrl = process.env.NEXT_PUBLIC_WEIGHBRIDGE_API_URL || process.env.NEXT_PUBLIC_WEIGHBRIDGE_URL || "http://localhost:8090";
   const operatorName = process.env.NEXT_PUBLIC_OPERATOR_NAME || "-";
 
   // Clean timer on unmount
@@ -158,7 +166,7 @@ export default function PosTimbang() {
   // Global click refocus for physical barcode scanner
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
-      if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan) return;
+      if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan || pendingDuplicateScan) return;
       if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) {
         return;
       }
@@ -172,11 +180,20 @@ export default function PosTimbang() {
     };
     window.addEventListener("click", handleGlobalClick);
     return () => window.removeEventListener("click", handleGlobalClick);
-  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan]);
+  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan]);
 
   // Keyboard shortcut: Space / Escape resets instantly to STANDBY
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (pendingDuplicateScan) {
+        if (e.code === "Escape" || e.code === "Enter" || e.code === "Space") {
+          e.preventDefault();
+          setPendingDuplicateScan(null);
+          setBarcodeInput("");
+          if (inputRef.current) inputRef.current.focus();
+        }
+        return;
+      }
       if (pendingScan) {
         if (e.code === "Escape") {
           e.preventDefault();
@@ -213,12 +230,12 @@ export default function PosTimbang() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan]);
+  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan]);
 
   // Auto-reset ke tampilan kosong (STANDBY) saat idle selama durasi env (default 10 detik)
   useEffect(() => {
     if (IDLE_TIMEOUT_SECONDS <= 0) return;
-    if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan) return;
+    if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan || pendingDuplicateScan) return;
     if (screenState === "STANDBY" && !barcodeInput) return;
 
     const timer = setTimeout(() => {
@@ -231,7 +248,7 @@ export default function PosTimbang() {
     }, IDLE_TIMEOUT_SECONDS * 1000);
 
     return () => clearTimeout(timer);
-  }, [screenState, barcodeInput, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan]);
+  }, [screenState, barcodeInput, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan]);
 
   // Validate barcode
   const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean; forceZeroWeight?: boolean } = {}) => {
@@ -239,13 +256,25 @@ export default function PosTimbang() {
     if (!cleanInput) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected) || (pendingZeroWeightScan && !options.forceZeroWeight)) return;
+    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected) || (pendingZeroWeightScan && !options.forceZeroWeight) || pendingDuplicateScan) return;
 
     const wt = options.snapshot || {
       weight: telemetry.weight,
       isStable: telemetry.isStable,
     };
     const reqSearchType = options.searchType || searchType;
+
+    // 0. Cek jika kode booking sama dengan transaksi terakhir yang baru saja berhasil diproses: tampilkan popup notifikasi
+    if (
+      lastProcessedRef.current &&
+      (cleanInput === lastProcessedRef.current.bookingCode ||
+       cleanInput === lastProcessedRef.current.ticketNumber ||
+       cleanInput === lastProcessedRef.current.input)
+    ) {
+      setPendingDuplicateScan({ code: cleanInput });
+      playAudioTone("ALREADY_CHECKIN");
+      return;
+    }
 
     // 1. Cek jika sensor terputus: minta konfirmasi petugas apakah tetap memproses atau batal
     if (!options.forceDisconnected && !telemetry.isConnected) {
@@ -302,6 +331,11 @@ export default function PosTimbang() {
         });
 
         if (result.status === "SUCCESS") {
+          lastProcessedRef.current = {
+            bookingCode: (result.bookingCode || cleanInput).toUpperCase(),
+            ticketNumber: (result.ticketNumber || "").toUpperCase(),
+            input: cleanInput,
+          };
           setScreenState("SUCCESS");
           playAudioTone("SUCCESS");
         } else if (result.status === "ALREADY_CHECKED_IN") {
@@ -396,6 +430,12 @@ export default function PosTimbang() {
       searchType: pending.searchType,
       snapshot: { weight: pending.weight, isStable: true }
     });
+  };
+
+  const handleCloseDuplicateModal = () => {
+    setPendingDuplicateScan(null);
+    setBarcodeInput("");
+    if (inputRef.current) inputRef.current.focus();
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1377,6 +1417,95 @@ export default function PosTimbang() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* POPUP NOTIFIKASI KODE BOOKING SAMA (DUPLICATE SCAN) */}
+      {pendingDuplicateScan && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 100,
+          padding: "20px"
+        }}>
+          <div style={{
+            position: "relative",
+            backgroundColor: "#ffffff",
+            borderRadius: "8px",
+            maxWidth: "450px",
+            width: "100%",
+            padding: "24px 20px 24px 20px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            boxSizing: "border-box"
+          }}>
+            {/* Warning Icon */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginTop: "4px" }}>
+              <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" strokeWidth="2.5" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#344767",
+              textAlign: "center",
+              lineHeight: "20px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "0px"
+            }}>
+              Kode Booking Sudah Diproses
+            </h3>
+
+            {/* Description */}
+            <p style={{
+              fontSize: "16px",
+              fontWeight: 400,
+              color: "#475569",
+              textAlign: "center",
+              lineHeight: "22px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "24px"
+            }}>
+              Tiket dengan kode booking <strong>{pendingDuplicateScan.code}</strong> sudah berhasil diproses sebelumnya. Silakan scan tiket kendaraan berikutnya.
+            </p>
+
+            {/* Action Button: TUTUP */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%" }}>
+              <button
+                type="button"
+                onClick={handleCloseDuplicateModal}
+                style={{
+                  height: "36px",
+                  padding: "6px 28px",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "#1A73E8",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  cursor: "pointer",
+                  boxShadow: "0 3px 5px -1px rgba(26, 115, 232, 0.3)"
+                }}
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}
