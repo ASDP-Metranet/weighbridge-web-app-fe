@@ -33,6 +33,12 @@ const ALLOW_ZERO_OR_NEGATIVE_WEIGHT =
   process.env.NEXT_PUBLIC_ALLOW_ZERO_WEIGHT === "true" ||
   process.env.NEXT_PUBLIC_ALLOW_ZERO_WEIGHT === "1";
 
+// Durasi idle otomatis kembali ke tampilan STANDBY dalam detik (default 10 detik, 0 = nonaktif)
+const IDLE_TIMEOUT_SECONDS = parseInt(
+  process.env.NEXT_PUBLIC_IDLE_TIMEOUT_SECONDS || "10",
+  10
+);
+
 export default function PosTimbang() {
   const telemetry = useWeightStream();
 
@@ -208,6 +214,24 @@ export default function PosTimbang() {
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan]);
+
+  // Auto-reset ke tampilan kosong (STANDBY) saat idle selama durasi env (default 10 detik)
+  useEffect(() => {
+    if (IDLE_TIMEOUT_SECONDS <= 0) return;
+    if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan) return;
+    if (screenState === "STANDBY" && !barcodeInput) return;
+
+    const timer = setTimeout(() => {
+      setScreenState("STANDBY");
+      setBarcodeInput("");
+      setValidationResult(null);
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, IDLE_TIMEOUT_SECONDS * 1000);
+
+    return () => clearTimeout(timer);
+  }, [screenState, barcodeInput, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan]);
 
   // Validate barcode
   const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean; forceZeroWeight?: boolean } = {}) => {
