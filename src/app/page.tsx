@@ -73,6 +73,10 @@ export default function PosTimbang() {
   const [pendingDuplicateScan, setPendingDuplicateScan] = useState<{
     code: string;
   } | null>(null);
+  const [pendingNonGoodsScan, setPendingNonGoodsScan] = useState<{
+    code: string;
+    vehicleClass?: string;
+  } | null>(null);
   const lastProcessedRef = useRef<{
     bookingCode?: string;
     ticketNumber?: string;
@@ -166,7 +170,7 @@ export default function PosTimbang() {
   // Global click refocus for physical barcode scanner
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
-      if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan || pendingDuplicateScan) return;
+      if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan || pendingDuplicateScan || pendingNonGoodsScan) return;
       if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) {
         return;
       }
@@ -180,11 +184,20 @@ export default function PosTimbang() {
     };
     window.addEventListener("click", handleGlobalClick);
     return () => window.removeEventListener("click", handleGlobalClick);
-  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan]);
+  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan, pendingNonGoodsScan]);
 
   // Keyboard shortcut: Space / Escape resets instantly to STANDBY
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (pendingNonGoodsScan) {
+        if (e.code === "Escape" || e.code === "Enter" || e.code === "Space") {
+          e.preventDefault();
+          setPendingNonGoodsScan(null);
+          setBarcodeInput("");
+          if (inputRef.current) inputRef.current.focus();
+        }
+        return;
+      }
       if (pendingDuplicateScan) {
         if (e.code === "Escape" || e.code === "Enter" || e.code === "Space") {
           e.preventDefault();
@@ -230,12 +243,12 @@ export default function PosTimbang() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan]);
+  }, [screenState, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan, pendingNonGoodsScan]);
 
   // Auto-reset ke tampilan kosong (STANDBY) saat idle selama durasi env (default 10 detik)
   useEffect(() => {
     if (IDLE_TIMEOUT_SECONDS <= 0) return;
-    if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan || pendingDuplicateScan) return;
+    if (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan || pendingDuplicateScan || pendingNonGoodsScan) return;
     if (screenState === "STANDBY" && !barcodeInput) return;
 
     const timer = setTimeout(() => {
@@ -248,7 +261,7 @@ export default function PosTimbang() {
     }, IDLE_TIMEOUT_SECONDS * 1000);
 
     return () => clearTimeout(timer);
-  }, [screenState, barcodeInput, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan]);
+  }, [screenState, barcodeInput, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan, pendingNonGoodsScan]);
 
   // Validate barcode
   const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean; forceZeroWeight?: boolean } = {}) => {
@@ -256,7 +269,7 @@ export default function PosTimbang() {
     if (!cleanInput) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected) || (pendingZeroWeightScan && !options.forceZeroWeight) || pendingDuplicateScan) return;
+    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected) || (pendingZeroWeightScan && !options.forceZeroWeight) || pendingDuplicateScan || pendingNonGoodsScan) return;
 
     const wt = options.snapshot || {
       weight: telemetry.weight,
@@ -338,6 +351,12 @@ export default function PosTimbang() {
           };
           setScreenState("SUCCESS");
           playAudioTone("SUCCESS");
+        } else if (result.status === "NON_GOODS_VEHICLE") {
+          setPendingNonGoodsScan({
+            code: result.bookingCode || cleanInput,
+            vehicleClass: result.vehicleClass || "Penumpang",
+          });
+          playAudioTone("INVALID");
         } else if (result.status === "ALREADY_CHECKED_IN") {
           setScreenState("ALREADY_CHECKIN");
           playAudioTone("ALREADY_CHECKIN");
@@ -434,6 +453,12 @@ export default function PosTimbang() {
 
   const handleCloseDuplicateModal = () => {
     setPendingDuplicateScan(null);
+    setBarcodeInput("");
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  const handleCloseNonGoodsModal = () => {
+    setPendingNonGoodsScan(null);
     setBarcodeInput("");
     if (inputRef.current) inputRef.current.focus();
   };
@@ -1488,6 +1513,95 @@ export default function PosTimbang() {
               <button
                 type="button"
                 onClick={handleCloseDuplicateModal}
+                style={{
+                  height: "36px",
+                  padding: "6px 28px",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "#1A73E8",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  cursor: "pointer",
+                  boxShadow: "0 3px 5px -1px rgba(26, 115, 232, 0.3)"
+                }}
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP NOTIFIKASI GOLONGAN BUKAN BARANG */}
+      {pendingNonGoodsScan && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 100,
+          padding: "20px"
+        }}>
+          <div style={{
+            position: "relative",
+            backgroundColor: "#ffffff",
+            borderRadius: "8px",
+            maxWidth: "450px",
+            width: "100%",
+            padding: "24px 20px 24px 20px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            boxSizing: "border-box"
+          }}>
+            {/* Warning Icon */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginTop: "4px" }}>
+              <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" strokeWidth="2.5" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#344767",
+              textAlign: "center",
+              lineHeight: "20px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "0px"
+            }}>
+              Bukan Kendaraan Barang
+            </h3>
+
+            {/* Description */}
+            <p style={{
+              fontSize: "16px",
+              fontWeight: 400,
+              color: "#475569",
+              textAlign: "center",
+              lineHeight: "22px",
+              margin: 0,
+              paddingTop: "14px",
+              paddingBottom: "24px"
+            }}>
+              Tiket dengan kode booking <strong>{pendingNonGoodsScan.code}</strong> terdaftar sebagai <strong>{pendingNonGoodsScan.vehicleClass || "Golongan Penumpang"}</strong>. Jembatan timbang hanya diperuntukkan bagi kendaraan barang / muatan.
+            </p>
+
+            {/* Action Button: TUTUP */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%" }}>
+              <button
+                type="button"
+                onClick={handleCloseNonGoodsModal}
                 style={{
                   height: "36px",
                   padding: "6px 28px",
