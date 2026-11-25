@@ -7,7 +7,6 @@ export interface WeightTelemetry {
   isStable: boolean;
   isConnected: boolean;
   unit: string;
-  deviceId: string;
   port?: string;
   rawString?: string;
   lastUpdated?: Date;
@@ -19,7 +18,6 @@ export interface UseWeightStreamOptions {
   settlingWindowMs?: number;
   watchdogTimeoutMs?: number;
   reconnectIntervalMs?: number;
-  deviceId?: string;
 }
 
 interface WeightSample {
@@ -34,7 +32,6 @@ const DEFAULT_OPTIONS: Required<UseWeightStreamOptions> = {
   settlingWindowMs: 1500,
   watchdogTimeoutMs: 20000,
   reconnectIntervalMs: 3000,
-  deviceId: "",
 };
 
 export function useWeightStream(options?: UseWeightStreamOptions) {
@@ -45,7 +42,6 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
     isStable: false,
     isConnected: false,
     unit: "kg",
-    deviceId: config.deviceId,
   });
 
   const samplesRef = useRef<WeightSample[]>([]);
@@ -163,28 +159,27 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
 
           try {
             const data = JSON.parse(e.data);
-            // Ponytail: Tare / Negative Normalization - negative drift becomes 0.0 kg
+            // Mempertahankan nilai bobot asli dari sensor (termasuk 0 atau nilai minus untuk deteksi deviasi tare)
             const rawWeight = typeof data.weight === "number" ? data.weight : parseFloat(data.weight) || 0;
-            const normalizedWeight = Math.max(0, Math.round(rawWeight * 1000) / 1000);
-            // Ponytail: Gunakan flag kestabilan langsung dari indikator hardware/loket-adapter (ST/US)
+            const currentWeight = Math.round(rawWeight * 1000) / 1000;
+            // Gunakan flag kestabilan langsung dari indikator hardware/loket-adapter (ST/US)
             const hardwareStable = Boolean(
               data.stable !== undefined
                 ? data.stable
                 : data.isStable !== undefined
                 ? data.isStable
-                : evaluateStabilization(normalizedWeight, true)
+                : evaluateStabilization(currentWeight, true)
             );
             const isStable = hardwareStable;
 
             setTelemetry((prev) => ({
               ...prev,
-              weight: normalizedWeight,
+              weight: currentWeight,
               isStable,
               isConnected: true,
               unit: (data.unit || "kg").toLowerCase(),
               rawString: data.raw || "",
               port: currentPortRef.current,
-              deviceId: data.deviceId || config.deviceId || "",
               lastUpdated: new Date(),
             }));
           } catch (err) {
@@ -234,7 +229,7 @@ export function useWeightStream(options?: UseWeightStreamOptions) {
         eventSourceRef.current = null;
       }
     };
-  }, [config.adapterUrl, config.deviceId, config.reconnectIntervalMs, evaluateStabilization, kickWatchdog]);
+  }, [config.adapterUrl, config.reconnectIntervalMs, evaluateStabilization, kickWatchdog]);
 
   return telemetry;
 }
