@@ -60,15 +60,18 @@ export default function PosTimbang() {
     code: string;
     searchType: string;
     snapshot: { weight: number; isStable: boolean };
+    forceDuplicate?: boolean;
   } | null>(null);
   const [pendingDisconnectedScan, setPendingDisconnectedScan] = useState<{
     code: string;
     searchType: string;
+    forceDuplicate?: boolean;
   } | null>(null);
   const [pendingZeroWeightScan, setPendingZeroWeightScan] = useState<{
     code: string;
     searchType: string;
     weight: number;
+    forceDuplicate?: boolean;
   } | null>(null);
   const [pendingDuplicateScan, setPendingDuplicateScan] = useState<{
     code: string;
@@ -220,7 +223,18 @@ export default function PosTimbang() {
         return;
       }
       if (pendingDisconnectedScan) {
-        if (e.code === "Escape") {
+        if (e.code === "Enter") {
+          e.preventDefault();
+          const pending = pendingDisconnectedScan;
+          setPendingDisconnectedScan(null);
+          if (validateRef.current) {
+            validateRef.current(pending.code, {
+              forceDisconnected: true,
+              forceDuplicate: pending.forceDuplicate,
+              searchType: pending.searchType
+            });
+          }
+        } else if (e.code === "Escape") {
           e.preventDefault();
           setPendingDisconnectedScan(null);
           setBarcodeInput("");
@@ -229,7 +243,19 @@ export default function PosTimbang() {
         return;
       }
       if (pendingZeroWeightScan) {
-        if (e.code === "Escape") {
+        if (e.code === "Enter" && ALLOW_ZERO_OR_NEGATIVE_WEIGHT) {
+          e.preventDefault();
+          const pending = pendingZeroWeightScan;
+          setPendingZeroWeightScan(null);
+          if (validateRef.current) {
+            validateRef.current(pending.code, {
+              forceZeroWeight: true,
+              forceDuplicate: pending.forceDuplicate,
+              searchType: pending.searchType,
+              snapshot: { weight: pending.weight, isStable: true }
+            });
+          }
+        } else if (e.code === "Escape") {
           e.preventDefault();
           setPendingZeroWeightScan(null);
           setBarcodeInput("");
@@ -299,19 +325,19 @@ export default function PosTimbang() {
 
     // 1. Cek jika sensor terputus: minta konfirmasi petugas apakah tetap memproses atau batal
     if (!options.forceDisconnected && !telemetry.isConnected) {
-      setPendingDisconnectedScan({ code: cleanInput, searchType: reqSearchType });
+      setPendingDisconnectedScan({ code: cleanInput, searchType: reqSearchType, forceDuplicate: options.forceDuplicate });
       return;
     }
 
     // 2. Cek jika sensor terhubung tapi bobot <= 0 (0 atau minus): tahan dan tampilkan dialog konfirmasi/pemblokiran
     if (!options.forceZeroWeight && telemetry.isConnected && wt.weight <= 0) {
-      setPendingZeroWeightScan({ code: cleanInput, searchType: reqSearchType, weight: wt.weight });
+      setPendingZeroWeightScan({ code: cleanInput, searchType: reqSearchType, weight: wt.weight, forceDuplicate: options.forceDuplicate });
       return;
     }
 
     // 3. Cek jika sensor terhubung tapi bobot belum stabil: tahan dan tampilkan modal "Bobot Belum Stabil"
     if (!options.snapshot && telemetry.isConnected && !telemetry.isStable) {
-      setPendingScan({ code: cleanInput, searchType: reqSearchType, snapshot: wt });
+      setPendingScan({ code: cleanInput, searchType: reqSearchType, snapshot: wt, forceDuplicate: options.forceDuplicate });
       return;
     }
 
@@ -437,7 +463,11 @@ export default function PosTimbang() {
     const pending = pendingDisconnectedScan;
     if (!pending) return;
     setPendingDisconnectedScan(null);
-    validateBarcode(pending.code, { forceDisconnected: true, searchType: pending.searchType });
+    validateBarcode(pending.code, {
+      forceDisconnected: true,
+      forceDuplicate: pending.forceDuplicate,
+      searchType: pending.searchType
+    });
   };
 
   const handleCancelZeroWeight = () => {
@@ -452,6 +482,7 @@ export default function PosTimbang() {
     setPendingZeroWeightScan(null);
     validateBarcode(pending.code, {
       forceZeroWeight: true,
+      forceDuplicate: pending.forceDuplicate,
       searchType: pending.searchType,
       snapshot: { weight: pending.weight, isStable: true }
     });
