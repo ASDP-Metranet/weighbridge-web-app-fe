@@ -298,7 +298,14 @@ export default function PosTimbang() {
     if (!cleanInput) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected) || (pendingZeroWeightScan && !options.forceZeroWeight) || pendingDuplicateScan || pendingNonGoodsScan) return;
+    if (
+      submittingRef.current ||
+      (pendingScan && !options.snapshot) ||
+      (pendingDisconnectedScan && !options.forceDisconnected) ||
+      (pendingZeroWeightScan && !options.forceZeroWeight) ||
+      (pendingDuplicateScan && !options.forceDuplicate) ||
+      pendingNonGoodsScan
+    ) return;
 
     const wt = options.snapshot || {
       weight: telemetry.weight,
@@ -343,6 +350,7 @@ export default function PosTimbang() {
 
     const now = Date.now();
     if (
+      !options.forceDuplicate &&
       lastSubmitRef.current.value === cleanInput &&
       now - lastSubmitRef.current.ts < DUPLICATE_SCAN_WINDOW_MS
     ) {
@@ -423,7 +431,7 @@ export default function PosTimbang() {
         inputRef.current.focus();
       }
     }
-  }, [apiBaseUrl, operatorName, pendingDisconnectedScan, pendingScan, pendingZeroWeightScan, playAudioTone, searchType, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
+  }, [apiBaseUrl, operatorName, pendingDisconnectedScan, pendingDuplicateScan, pendingNonGoodsScan, pendingScan, pendingZeroWeightScan, playAudioTone, searchType, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
 
   validateRef.current = validateBarcode;
 
