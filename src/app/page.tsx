@@ -78,11 +78,6 @@ export default function PosTimbang() {
     code: string;
     vehicleClass?: string;
   } | null>(null);
-  const lastProcessedRef = useRef<{
-    bookingCode?: string;
-    ticketNumber?: string;
-    input?: string;
-  } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -285,17 +280,21 @@ export default function PosTimbang() {
     };
     const reqSearchType = options.searchType || searchType;
 
-    // 0. Cek jika kode booking sama dengan transaksi terakhir yang baru saja berhasil diproses: tampilkan popup konfirmasi
-    if (
-      !options.forceDuplicate &&
-      lastProcessedRef.current &&
-      (cleanInput === lastProcessedRef.current.bookingCode ||
-       cleanInput === lastProcessedRef.current.ticketNumber ||
-       cleanInput === lastProcessedRef.current.input)
-    ) {
-      setPendingDuplicateScan({ code: cleanInput, searchType: reqSearchType });
-      playAudioTone("ALREADY_CHECKIN");
-      return;
+    // 0. Cek ke backend apakah kode booking/tiket sudah pernah bertransaksi timbang hari ini: tampilkan popup konfirmasi
+    if (!options.forceDuplicate) {
+      try {
+        const checkRes = await fetch(`${apiBaseUrl}/api/weighbridge/check-today?code=${encodeURIComponent(cleanInput)}`);
+        if (checkRes.ok) {
+          const isToday = await checkRes.json();
+          if (isToday === true) {
+            setPendingDuplicateScan({ code: cleanInput, searchType: reqSearchType });
+            playAudioTone("ALREADY_CHECKIN");
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Gagal mengecek status transaksi hari ini dari server:", err);
+      }
     }
 
     // 1. Cek jika sensor terputus: minta konfirmasi petugas apakah tetap memproses atau batal
@@ -353,11 +352,6 @@ export default function PosTimbang() {
         });
 
         if (result.status === "SUCCESS") {
-          lastProcessedRef.current = {
-            bookingCode: (result.bookingCode || cleanInput).toUpperCase(),
-            ticketNumber: (result.ticketNumber || "").toUpperCase(),
-            input: cleanInput,
-          };
           setScreenState("SUCCESS");
           playAudioTone("SUCCESS");
         } else if (result.status === "NON_GOODS_VEHICLE") {
