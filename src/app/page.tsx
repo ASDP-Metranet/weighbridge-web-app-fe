@@ -354,6 +354,8 @@ export default function PosTimbang() {
         if (result.status === "SUCCESS") {
           setScreenState("SUCCESS");
           playAudioTone("SUCCESS");
+          setBarcodeInput("");
+          burstCharsRef.current = 0;
         } else if (result.status === "NON_GOODS_VEHICLE") {
           setPendingNonGoodsScan({
             code: result.bookingCode || cleanInput,
@@ -393,7 +395,6 @@ export default function PosTimbang() {
       setLoading(false);
       if (inputRef.current) {
         inputRef.current.focus();
-        inputRef.current.select();
       }
     }
   }, [apiBaseUrl, operatorName, pendingDisconnectedScan, pendingScan, pendingZeroWeightScan, playAudioTone, searchType, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
@@ -402,7 +403,9 @@ export default function PosTimbang() {
 
   const handleValidate = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     if (manualResetTimerRef.current) clearTimeout(manualResetTimerRef.current);
+    const targetInput = (inputRef.current?.value || barcodeInput || "").trim();
     const now = Date.now();
     const chars = burstCharsRef.current;
     const msPerChar = (now - burstStartRef.current) / Math.max(chars - 1, 1);
@@ -415,7 +418,7 @@ export default function PosTimbang() {
       return;
     }
 
-    validateBarcode(barcodeInput);
+    validateBarcode(targetInput);
   };
 
   const handleCancelUnstable = () => {
@@ -476,13 +479,15 @@ export default function PosTimbang() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toUpperCase();
     const now = Date.now();
+    const isNewBurst = now - lastKeyTsRef.current > SCANNER_BURST_GAP_MS;
 
-    if (now - lastKeyTsRef.current > SCANNER_BURST_GAP_MS || value.length <= 1) {
+    if (isNewBurst || value.length <= 1) {
       burstStartRef.current = now;
-      burstCharsRef.current = 0;
+      burstCharsRef.current = value.length;
+    } else {
+      burstCharsRef.current += Math.max(value.length - barcodeInput.length, 1);
     }
     lastKeyTsRef.current = now;
-    burstCharsRef.current += Math.max(value.length - barcodeInput.length, 1);
 
     setBarcodeInput(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
