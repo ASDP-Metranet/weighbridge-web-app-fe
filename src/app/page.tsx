@@ -72,6 +72,7 @@ export default function PosTimbang() {
   } | null>(null);
   const [pendingDuplicateScan, setPendingDuplicateScan] = useState<{
     code: string;
+    searchType?: string;
   } | null>(null);
   const [pendingNonGoodsScan, setPendingNonGoodsScan] = useState<{
     code: string;
@@ -93,7 +94,7 @@ export default function PosTimbang() {
   const burstCharsRef = useRef(0);
   const submittingRef = useRef(false);
   const lastSubmitRef = useRef({ value: "", ts: 0 });
-  const validateRef = useRef<((input: string, options?: { snapshot?: { weight: number; isStable: boolean }; searchType?: string }) => Promise<void>) | null>(null);
+  const validateRef = useRef<((input: string, options?: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean; forceZeroWeight?: boolean; forceDuplicate?: boolean }) => Promise<void>) | null>(null);
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_WEIGHBRIDGE_API_URL || process.env.NEXT_PUBLIC_WEIGHBRIDGE_URL || "http://localhost:8090";
   const operatorName = process.env.NEXT_PUBLIC_OPERATOR_NAME || "-";
@@ -199,7 +200,14 @@ export default function PosTimbang() {
         return;
       }
       if (pendingDuplicateScan) {
-        if (e.code === "Escape" || e.code === "Enter" || e.code === "Space") {
+        if (e.code === "Enter") {
+          e.preventDefault();
+          const pending = pendingDuplicateScan;
+          setPendingDuplicateScan(null);
+          if (validateRef.current) {
+            validateRef.current(pending.code, { forceDuplicate: true, searchType: pending.searchType });
+          }
+        } else if (e.code === "Escape") {
           e.preventDefault();
           setPendingDuplicateScan(null);
           setBarcodeInput("");
@@ -264,7 +272,7 @@ export default function PosTimbang() {
   }, [screenState, barcodeInput, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan, pendingNonGoodsScan]);
 
   // Validate barcode
-  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean; forceZeroWeight?: boolean } = {}) => {
+  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean; forceZeroWeight?: boolean; forceDuplicate?: boolean } = {}) => {
     const cleanInput = (rawInput || "").trim().toUpperCase();
     if (!cleanInput) return;
 
@@ -277,14 +285,15 @@ export default function PosTimbang() {
     };
     const reqSearchType = options.searchType || searchType;
 
-    // 0. Cek jika kode booking sama dengan transaksi terakhir yang baru saja berhasil diproses: tampilkan popup notifikasi
+    // 0. Cek jika kode booking sama dengan transaksi terakhir yang baru saja berhasil diproses: tampilkan popup konfirmasi
     if (
+      !options.forceDuplicate &&
       lastProcessedRef.current &&
       (cleanInput === lastProcessedRef.current.bookingCode ||
        cleanInput === lastProcessedRef.current.ticketNumber ||
        cleanInput === lastProcessedRef.current.input)
     ) {
-      setPendingDuplicateScan({ code: cleanInput });
+      setPendingDuplicateScan({ code: cleanInput, searchType: reqSearchType });
       playAudioTone("ALREADY_CHECKIN");
       return;
     }
@@ -451,10 +460,17 @@ export default function PosTimbang() {
     });
   };
 
-  const handleCloseDuplicateModal = () => {
+  const handleCancelDuplicate = () => {
     setPendingDuplicateScan(null);
     setBarcodeInput("");
     if (inputRef.current) inputRef.current.focus();
+  };
+
+  const handleConfirmDuplicate = () => {
+    const pending = pendingDuplicateScan;
+    if (!pending) return;
+    setPendingDuplicateScan(null);
+    validateBarcode(pending.code, { forceDuplicate: true, searchType: pending.searchType });
   };
 
   const handleCloseNonGoodsModal = () => {
@@ -1505,17 +1521,17 @@ export default function PosTimbang() {
               paddingTop: "14px",
               paddingBottom: "24px"
             }}>
-              Tiket dengan kode booking <strong>{pendingDuplicateScan.code}</strong> sudah berhasil diproses sebelumnya. Silakan scan tiket kendaraan berikutnya.
+              Tiket dengan kode booking <strong>{pendingDuplicateScan.code}</strong> sudah berhasil diproses sebelumnya. Apakah Anda ingin melakukan penimbangan ulang untuk tiket ini?
             </p>
 
-            {/* Action Button: TUTUP */}
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%" }}>
+            {/* Action Buttons: TETAP PROSES & BATAL */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", width: "100%" }}>
               <button
                 type="button"
-                onClick={handleCloseDuplicateModal}
+                onClick={handleConfirmDuplicate}
                 style={{
                   height: "36px",
-                  padding: "6px 28px",
+                  padding: "6px 20px",
                   borderRadius: "6px",
                   border: "none",
                   backgroundColor: "#1A73E8",
@@ -1528,7 +1544,26 @@ export default function PosTimbang() {
                   boxShadow: "0 3px 5px -1px rgba(26, 115, 232, 0.3)"
                 }}
               >
-                Tutup
+                Tetap Proses
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelDuplicate}
+                style={{
+                  height: "36px",
+                  padding: "6px 20px",
+                  borderRadius: "6px",
+                  border: "1.5px solid #1A73E8",
+                  backgroundColor: "transparent",
+                  color: "#1A73E8",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  cursor: "pointer"
+                }}
+              >
+                Batal
               </button>
             </div>
           </div>
