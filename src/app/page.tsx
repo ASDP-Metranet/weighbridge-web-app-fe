@@ -72,16 +72,19 @@ export default function PosTimbang() {
   } | null>(null);
   const [pendingDuplicateScan, setPendingDuplicateScan] = useState<{
     code: string;
+    searchType?: string;
   } | null>(null);
   const [pendingNonGoodsScan, setPendingNonGoodsScan] = useState<{
     code: string;
     vehicleClass?: string;
   } | null>(null);
-  const lastProcessedRef = useRef<{
-    bookingCode?: string;
-    ticketNumber?: string;
-    input?: string;
-  } | null>(null);
+  // Menyimpan flag konfirmasi untuk scan aktif agar tidak hilang saat popup berantai
+  const scanFlagsRef = useRef<{
+    code: string;
+    forceDuplicate?: boolean;
+    forceDisconnected?: boolean;
+    forceZeroWeight?: boolean;
+  }>({ code: "" });
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -93,7 +96,7 @@ export default function PosTimbang() {
   const burstCharsRef = useRef(0);
   const submittingRef = useRef(false);
   const lastSubmitRef = useRef({ value: "", ts: 0 });
-  const validateRef = useRef<((input: string, options?: { snapshot?: { weight: number; isStable: boolean }; searchType?: string }) => Promise<void>) | null>(null);
+  const validateRef = useRef<((input: string, options?: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; fromConfirm?: boolean; forceDisconnected?: boolean; forceZeroWeight?: boolean; forceDuplicate?: boolean }) => Promise<void>) | null>(null);
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_WEIGHBRIDGE_API_URL || process.env.NEXT_PUBLIC_WEIGHBRIDGE_URL || "http://localhost:8090";
   const operatorName = process.env.NEXT_PUBLIC_OPERATOR_NAME || "-";
@@ -199,8 +202,14 @@ export default function PosTimbang() {
         return;
       }
       if (pendingDuplicateScan) {
-        if (e.code === "Escape" || e.code === "Enter" || e.code === "Space") {
+        if (e.code === "Enter") {
           e.preventDefault();
+          const pending = pendingDuplicateScan;
+          setPendingDuplicateScan(null);
+          validateRef.current?.(pending.code, { fromConfirm: true, forceDuplicate: true, searchType: pending.searchType });
+        } else if (e.code === "Escape") {
+          e.preventDefault();
+          scanFlagsRef.current = { code: "" };
           setPendingDuplicateScan(null);
           setBarcodeInput("");
           if (inputRef.current) inputRef.current.focus();
@@ -210,6 +219,7 @@ export default function PosTimbang() {
       if (pendingScan) {
         if (e.code === "Escape") {
           e.preventDefault();
+          scanFlagsRef.current = { code: "" };
           setPendingScan(null);
           setBarcodeInput("");
           if (inputRef.current) inputRef.current.focus();
@@ -217,8 +227,14 @@ export default function PosTimbang() {
         return;
       }
       if (pendingDisconnectedScan) {
-        if (e.code === "Escape") {
+        if (e.code === "Enter") {
           e.preventDefault();
+          const pending = pendingDisconnectedScan;
+          setPendingDisconnectedScan(null);
+          validateRef.current?.(pending.code, { fromConfirm: true, forceDisconnected: true, searchType: pending.searchType });
+        } else if (e.code === "Escape") {
+          e.preventDefault();
+          scanFlagsRef.current = { code: "" };
           setPendingDisconnectedScan(null);
           setBarcodeInput("");
           if (inputRef.current) inputRef.current.focus();
@@ -226,8 +242,19 @@ export default function PosTimbang() {
         return;
       }
       if (pendingZeroWeightScan) {
-        if (e.code === "Escape") {
+        if (e.code === "Enter" && ALLOW_ZERO_OR_NEGATIVE_WEIGHT) {
           e.preventDefault();
+          const pending = pendingZeroWeightScan;
+          setPendingZeroWeightScan(null);
+          validateRef.current?.(pending.code, {
+            fromConfirm: true,
+            forceZeroWeight: true,
+            searchType: pending.searchType,
+            snapshot: { weight: pending.weight, isStable: true }
+          });
+        } else if (e.code === "Escape") {
+          e.preventDefault();
+          scanFlagsRef.current = { code: "" };
           setPendingZeroWeightScan(null);
           setBarcodeInput("");
           if (inputRef.current) inputRef.current.focus();
@@ -264,12 +291,22 @@ export default function PosTimbang() {
   }, [screenState, barcodeInput, pendingScan, pendingDisconnectedScan, pendingZeroWeightScan, pendingDuplicateScan, pendingNonGoodsScan]);
 
   // Validate barcode
-  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; forceDisconnected?: boolean; forceZeroWeight?: boolean } = {}) => {
+  const validateBarcode = useCallback(async (rawInput: string, options: { snapshot?: { weight: number; isStable: boolean }; searchType?: string; fromConfirm?: boolean; forceDisconnected?: boolean; forceZeroWeight?: boolean; forceDuplicate?: boolean } = {}) => {
     const cleanInput = (rawInput || "").trim().toUpperCase();
     if (!cleanInput) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (submittingRef.current || (pendingScan && !options.snapshot) || (pendingDisconnectedScan && !options.forceDisconnected) || (pendingZeroWeightScan && !options.forceZeroWeight) || pendingDuplicateScan || pendingNonGoodsScan) return;
+    if (
+      submittingRef.current ||
+      (!options.fromConfirm && (pendingScan || pendingDisconnectedScan || pendingZeroWeightScan || pendingDuplicateScan || pendingNonGoodsScan))
+    ) return;
+
+    if (!options.fromConfirm || scanFlagsRef.current.code !== cleanInput) {
+      scanFlagsRef.current = { code: cleanInput };
+    }
+    if (options.forceDuplicate) scanFlagsRef.current.forceDuplicate = true;
+    if (options.forceDisconnected) scanFlagsRef.current.forceDisconnected = true;
+    if (options.forceZeroWeight) scanFlagsRef.current.forceZeroWeight = true;
 
     const wt = options.snapshot || {
       weight: telemetry.weight,
@@ -277,26 +314,28 @@ export default function PosTimbang() {
     };
     const reqSearchType = options.searchType || searchType;
 
-    // 0. Cek jika kode booking sama dengan transaksi terakhir yang baru saja berhasil diproses: tampilkan popup notifikasi
-    if (
-      lastProcessedRef.current &&
-      (cleanInput === lastProcessedRef.current.bookingCode ||
-       cleanInput === lastProcessedRef.current.ticketNumber ||
-       cleanInput === lastProcessedRef.current.input)
-    ) {
-      setPendingDuplicateScan({ code: cleanInput });
-      playAudioTone("ALREADY_CHECKIN");
-      return;
+    // 0. Cek ke backend apakah kode booking / no tiket / order ID sudah pernah bertransaksi timbang hari ini
+    if (!scanFlagsRef.current.forceDuplicate) {
+      try {
+        const checkRes = await fetch(`${apiBaseUrl}/api/weighbridge/check-today?code=${encodeURIComponent(cleanInput)}`);
+        if (checkRes.ok && (await checkRes.json()) === true) {
+          setPendingDuplicateScan({ code: cleanInput, searchType: reqSearchType });
+          playAudioTone("ALREADY_CHECKIN");
+          return;
+        }
+      } catch (err) {
+        console.warn("Gagal mengecek status transaksi hari ini dari server:", err);
+      }
     }
 
     // 1. Cek jika sensor terputus: minta konfirmasi petugas apakah tetap memproses atau batal
-    if (!options.forceDisconnected && !telemetry.isConnected) {
+    if (!scanFlagsRef.current.forceDisconnected && !telemetry.isConnected) {
       setPendingDisconnectedScan({ code: cleanInput, searchType: reqSearchType });
       return;
     }
 
     // 2. Cek jika sensor terhubung tapi bobot <= 0 (0 atau minus): tahan dan tampilkan dialog konfirmasi/pemblokiran
-    if (!options.forceZeroWeight && telemetry.isConnected && wt.weight <= 0) {
+    if (!scanFlagsRef.current.forceZeroWeight && telemetry.isConnected && wt.weight <= 0) {
       setPendingZeroWeightScan({ code: cleanInput, searchType: reqSearchType, weight: wt.weight });
       return;
     }
@@ -309,6 +348,7 @@ export default function PosTimbang() {
 
     const now = Date.now();
     if (
+      !scanFlagsRef.current.forceDuplicate &&
       lastSubmitRef.current.value === cleanInput &&
       now - lastSubmitRef.current.ts < DUPLICATE_SCAN_WINDOW_MS
     ) {
@@ -344,13 +384,10 @@ export default function PosTimbang() {
         });
 
         if (result.status === "SUCCESS") {
-          lastProcessedRef.current = {
-            bookingCode: (result.bookingCode || cleanInput).toUpperCase(),
-            ticketNumber: (result.ticketNumber || "").toUpperCase(),
-            input: cleanInput,
-          };
           setScreenState("SUCCESS");
           playAudioTone("SUCCESS");
+          setBarcodeInput("");
+          burstCharsRef.current = 0;
         } else if (result.status === "NON_GOODS_VEHICLE") {
           setPendingNonGoodsScan({
             code: result.bookingCode || cleanInput,
@@ -386,6 +423,7 @@ export default function PosTimbang() {
       setScreenState("INVALID");
       playAudioTone("INVALID");
     } finally {
+      scanFlagsRef.current = { code: "" };
       submittingRef.current = false;
       setLoading(false);
       if (inputRef.current) {
@@ -393,13 +431,16 @@ export default function PosTimbang() {
         inputRef.current.select();
       }
     }
-  }, [apiBaseUrl, operatorName, pendingDisconnectedScan, pendingScan, pendingZeroWeightScan, playAudioTone, searchType, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
+  }, [apiBaseUrl, operatorName, pendingDisconnectedScan, pendingDuplicateScan, pendingNonGoodsScan, pendingScan, pendingZeroWeightScan, playAudioTone, searchType, telemetry.isConnected, telemetry.isStable, telemetry.weight]);
 
   validateRef.current = validateBarcode;
 
   const handleValidate = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (manualResetTimerRef.current) clearTimeout(manualResetTimerRef.current);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    const targetInput = (inputRef.current?.value || barcodeInput || "").trim();
     const now = Date.now();
     const chars = burstCharsRef.current;
     const msPerChar = (now - burstStartRef.current) / Math.max(chars - 1, 1);
@@ -412,16 +453,18 @@ export default function PosTimbang() {
       return;
     }
 
-    validateBarcode(barcodeInput);
+    validateBarcode(targetInput);
   };
 
   const handleCancelUnstable = () => {
+    scanFlagsRef.current = { code: "" };
     setPendingScan(null);
     setBarcodeInput("");
     if (inputRef.current) inputRef.current.focus();
   };
 
   const handleCancelDisconnected = () => {
+    scanFlagsRef.current = { code: "" };
     setPendingDisconnectedScan(null);
     setBarcodeInput("");
     if (inputRef.current) inputRef.current.focus();
@@ -431,10 +474,11 @@ export default function PosTimbang() {
     const pending = pendingDisconnectedScan;
     if (!pending) return;
     setPendingDisconnectedScan(null);
-    validateBarcode(pending.code, { forceDisconnected: true, searchType: pending.searchType });
+    validateBarcode(pending.code, { fromConfirm: true, forceDisconnected: true, searchType: pending.searchType });
   };
 
   const handleCancelZeroWeight = () => {
+    scanFlagsRef.current = { code: "" };
     setPendingZeroWeightScan(null);
     setBarcodeInput("");
     if (inputRef.current) inputRef.current.focus();
@@ -445,19 +489,29 @@ export default function PosTimbang() {
     if (!pending) return;
     setPendingZeroWeightScan(null);
     validateBarcode(pending.code, {
+      fromConfirm: true,
       forceZeroWeight: true,
       searchType: pending.searchType,
       snapshot: { weight: pending.weight, isStable: true }
     });
   };
 
-  const handleCloseDuplicateModal = () => {
+  const handleCancelDuplicate = () => {
+    scanFlagsRef.current = { code: "" };
     setPendingDuplicateScan(null);
     setBarcodeInput("");
     if (inputRef.current) inputRef.current.focus();
   };
 
+  const handleConfirmDuplicate = () => {
+    const pending = pendingDuplicateScan;
+    if (!pending) return;
+    setPendingDuplicateScan(null);
+    validateBarcode(pending.code, { fromConfirm: true, forceDuplicate: true, searchType: pending.searchType });
+  };
+
   const handleCloseNonGoodsModal = () => {
+    scanFlagsRef.current = { code: "" };
     setPendingNonGoodsScan(null);
     setBarcodeInput("");
     if (inputRef.current) inputRef.current.focus();
@@ -466,13 +520,15 @@ export default function PosTimbang() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toUpperCase();
     const now = Date.now();
+    const isNewBurst = now - lastKeyTsRef.current > SCANNER_BURST_GAP_MS;
 
-    if (now - lastKeyTsRef.current > SCANNER_BURST_GAP_MS || value.length <= 1) {
+    if (isNewBurst || value.length <= 1) {
       burstStartRef.current = now;
-      burstCharsRef.current = 0;
+      burstCharsRef.current = value.length;
+    } else {
+      burstCharsRef.current += Math.max(value.length - barcodeInput.length, 1);
     }
     lastKeyTsRef.current = now;
-    burstCharsRef.current += Math.max(value.length - barcodeInput.length, 1);
 
     setBarcodeInput(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -1505,17 +1561,17 @@ export default function PosTimbang() {
               paddingTop: "14px",
               paddingBottom: "24px"
             }}>
-              Tiket dengan kode booking <strong>{pendingDuplicateScan.code}</strong> sudah berhasil diproses sebelumnya. Silakan scan tiket kendaraan berikutnya.
+              Tiket dengan kode booking <strong>{pendingDuplicateScan.code}</strong> sudah berhasil diproses sebelumnya. Apakah Anda ingin melakukan penimbangan ulang untuk tiket ini?
             </p>
 
-            {/* Action Button: TUTUP */}
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%" }}>
+            {/* Action Buttons: TETAP PROSES & BATAL */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", width: "100%" }}>
               <button
                 type="button"
-                onClick={handleCloseDuplicateModal}
+                onClick={handleConfirmDuplicate}
                 style={{
                   height: "36px",
-                  padding: "6px 28px",
+                  padding: "6px 20px",
                   borderRadius: "6px",
                   border: "none",
                   backgroundColor: "#1A73E8",
@@ -1528,7 +1584,26 @@ export default function PosTimbang() {
                   boxShadow: "0 3px 5px -1px rgba(26, 115, 232, 0.3)"
                 }}
               >
-                Tutup
+                Tetap Proses
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelDuplicate}
+                style={{
+                  height: "36px",
+                  padding: "6px 20px",
+                  borderRadius: "6px",
+                  border: "1.5px solid #1A73E8",
+                  backgroundColor: "transparent",
+                  color: "#1A73E8",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  cursor: "pointer"
+                }}
+              >
+                Batal
               </button>
             </div>
           </div>
