@@ -32,4 +32,4 @@ jobs:
             "https://github.com/${GITHUB_REPOSITORY}.git" "$RUNNER_TEMP/gitlab-sync.git"
           git --git-dir="$RUNNER_TEMP/gitlab-sync.git" -c credential.helper= \
             -c 'credential.helper=!f() { printf "%s\n" "username=$GITLAB_USERNAME" "password=$GITLAB_TOKEN"; }; f' \
-            push https://gitlab.com/asdp2132340/loket/asdp-metranet-weighbridge-web-app/weighbridge-web-app-fe.git HEAD:refs/heads/dev
+            push --force https://gitlab.com/asdp2132340/loket/asdp-metranet-weighbridge-web-app/weighbridge-web-app-fe.git HEAD:refs/heads/dev
